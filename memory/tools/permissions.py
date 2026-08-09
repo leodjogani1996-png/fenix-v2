@@ -1,23 +1,14 @@
-
-
 from dataclasses import dataclass
-
-
-# ---------------------------------------------------------
-# FENIX TOOL PERMISSIONS
-# ---------------------------------------------------------
 
 
 @dataclass(frozen=True)
 class ToolRequest:
     """
-    Describes an action that Fenix wants to perform.
+    Describes a request to use a Fenix tool.
     """
 
     tool_name: str
     requires_admin: bool = False
-    requires_confirmation: bool = False
-    confirmed: bool = False
 
 
 @dataclass(frozen=True)
@@ -32,33 +23,19 @@ class PermissionResult:
 
 def check_permission(
     request: ToolRequest,
-    is_admin: bool = False
+    is_admin: bool
 ) -> PermissionResult:
     """
-    Decide whether Fenix is allowed to execute a tool.
+    Check whether the current user may execute a tool.
     """
-
-    if not request.tool_name.strip():
-        return PermissionResult(
-            allowed=False,
-            reason="Tool name cannot be empty."
-        )
 
     if request.requires_admin and not is_admin:
         return PermissionResult(
             allowed=False,
-            reason="Administrator permission is required."
-        )
-
-    if (
-        request.requires_confirmation
-        and not request.confirmed
-    ):
-        return PermissionResult(
-            allowed=False,
-            reason="User confirmation is required."
+            reason="Administrator authentication is required."
         )
 
     return PermissionResult(
-        allowed=True
+        allowed=True,
+        reason="Permission granted."
     )
