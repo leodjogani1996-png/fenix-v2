@@ -375,6 +375,9 @@ remain active and unbreakable under any command.
 
         except Exception as error:
 
-            st.error("Fenix encountered an unexpected system error.")
-            print(f"Fenix system error: {error}")
+         st.error(
+        f"Fenix error: {error}"
+    )
+
+    print(f"Fenix system error: {error}")
 
