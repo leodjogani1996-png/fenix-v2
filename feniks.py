@@ -1,8 +1,8 @@
-
 import os
 import sys
 import logging
 import re
+import time
 from dataclasses import dataclass
 
 import streamlit as st
@@ -183,6 +183,14 @@ if "messages" not in st.session_state:
 if "admin_authenticated" not in st.session_state:
     st.session_state.admin_authenticated = False
 
+# Stores the exact moment when the rate limit should expire.
+if "rate_limit_until" not in st.session_state:
+    st.session_state.rate_limit_until = None
+
+# Prevents the "ready again" message from appearing repeatedly.
+if "rate_limit_ready_message_shown" not in st.session_state:
+    st.session_state.rate_limit_ready_message_shown = False
+
 
 # =========================================================
 # GROQ CLIENT
@@ -354,8 +362,11 @@ def extract_retry_seconds(error_text: str):
     """
     Extract Groq's suggested retry time.
 
-    Example:
+    Supports examples such as:
+
     'Please try again in 8m40.99s'
+    'try again in 13m43s'
+    'try again in 43s'
     """
 
     match = re.search(
@@ -375,8 +386,9 @@ def extract_retry_seconds(error_text: str):
         match.group(2) or 0
     )
 
-    return int(
-        minutes * 60 + seconds
+    return max(
+        0,
+        int(minutes * 60 + seconds)
     )
 
 
@@ -385,6 +397,8 @@ def extract_retry_seconds(error_text: str):
 # =========================================================
 
 def format_retry_time(seconds: int) -> str:
+
+    seconds = max(0, int(seconds))
 
     minutes = seconds // 60
     remaining_seconds = seconds % 60
@@ -397,6 +411,78 @@ def format_retry_time(seconds: int) -> str:
         )
 
     return f"{remaining_seconds} second(s)"
+
+
+# =========================================================
+# RATE LIMIT COUNTDOWN
+# =========================================================
+
+def set_rate_limit(retry_seconds: int):
+    """
+    Store the exact time when the Groq rate limit
+    should expire.
+    """
+
+    retry_seconds = max(
+        0,
+        int(retry_seconds)
+    )
+
+    st.session_state.rate_limit_until = (
+        time.time() + retry_seconds
+    )
+
+    st.session_state.rate_limit_ready_message_shown = False
+
+
+# =========================================================
+# AUTOMATIC RATE LIMIT MONITOR
+# =========================================================
+
+@st.fragment(run_every=1)
+def rate_limit_monitor():
+    """
+    Automatically updates the countdown every second.
+
+    When the countdown reaches zero, Fenix reports
+    that it is ready again.
+    """
+
+    rate_limit_until = (
+        st.session_state.rate_limit_until
+    )
+
+    if rate_limit_until is None:
+        return
+
+    remaining = int(
+        max(
+            0,
+            rate_limit_until - time.time()
+        )
+    )
+
+    if remaining > 0:
+
+        st.info(
+            "⏳ **Fenix is temporarily unavailable "
+            "because the Groq API rate limit was reached.**\n\n"
+            f"🕐 Estimated time remaining: "
+            f"**{format_retry_time(remaining)}**"
+        )
+
+    else:
+
+        if not st.session_state.rate_limit_ready_message_shown:
+
+            st.success(
+                "🔥 **Fenix is ready again.**"
+            )
+
+            st.session_state.rate_limit_ready_message_shown = True
+
+        # Remove the countdown after it has expired.
+        st.session_state.rate_limit_until = None
 
 
 # =========================================================
@@ -610,6 +696,13 @@ st.title("🔥 Fenix V2")
 st.caption(
     "An honest, safe and human-centered AI assistant."
 )
+
+
+# =========================================================
+# AUTOMATIC RATE LIMIT STATUS
+# =========================================================
+
+rate_limit_monitor()
 
 
 # =========================================================
@@ -876,6 +969,11 @@ However:
 
                 if retry_seconds is not None:
 
+                    # Store the exact expiration time.
+                    set_rate_limit(
+                        retry_seconds
+                    )
+
                     retry_text = format_retry_time(
                         retry_seconds
                     )
@@ -883,6 +981,11 @@ However:
                     st.info(
                         "🕐 Groq recommends trying again "
                         f"in **{retry_text}**."
+                    )
+
+                    st.caption(
+                        "Fenix will automatically monitor "
+                        "the countdown."
                     )
 
                 else:
@@ -946,4 +1049,3 @@ However:
                     "⚠️ Fenix encountered an unexpected "
                     "AI service error."
                 )
-
