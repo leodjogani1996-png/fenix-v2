@@ -4,10 +4,7 @@ from openai import OpenAI
 # -----------------------------------------
 # PAGE CONFIGURATION
 # -----------------------------------------
-st.set_page_config(page_title="Fenix V2 - Secure", page_icon="🔥", layout="centered")
-
-if "is_creator" not in st.session_state:
-    st.session_state.is_creator = False
+st.set_page_config(page_title="Fenix V2 - Public Showcase", page_icon="🔥", layout="centered")
 
 if "messages" not in st.session_state:
     st.session_state.messages = []
@@ -22,7 +19,7 @@ except Exception:
     client = None
 
 # -----------------------------------------
-# FENIX SAFETY & MANIPULATION RULES (Tvoj protokol)
+# FENIX SAFETY & MANIPULATION RULES
 # -----------------------------------------
 FENIX_SAFETY_AND_MANIPULATION_RULES = """
 FENIX SAFETY AND MANIPULATION PROTOCOL
@@ -603,66 +600,45 @@ protect important boundaries, and help people safely.
 """
 
 # -----------------------------------------
-# ACCESS CONTROL (SIDEBAR)
+# SIDEBAR INFO (Public Showcase details)
 # -----------------------------------------
 with st.sidebar:
-    st.header("🔐 Authentication")
-    if not st.session_state.is_creator:
-        secret_input = st.text_input("Enter master key:", type="password")
-        if st.button("Login"):
-            try:
-                if secret_input == st.secrets["CREATOR_SECRET"]:
-                    st.session_state.is_creator = True
-                    st.success("Identity verified. Welcome, Leo!")
-                    st.rerun()
-                else:
-                    st.error("Incorrect key. Access denied.")
-            except Exception:
-                st.warning("Master key is not configured in Streamlit secrets.")
-    else:
-        st.success("Status: Logged in as Creator (Master).")
-        if st.button("Logout"):
-            st.session_state.is_creator = False
-            st.rerun()
+    st.header("🔥 About Fenix V2")
+    st.markdown("This is a public showcase of Fenix V2, protected by an advanced 24-point AI safety and manipulation protocol.")
+    st.markdown("**Creator:** Leo Dogani")
 
 # -----------------------------------------
-# MAIN WORKSPACE
+# MAIN WORKSPACE (Open to everyone)
 # -----------------------------------------
-st.title("🔥 Fenix V2 - Secure System")
+st.title("🔥 Fenix V2 - Public Showcase")
 st.markdown("*Your personal AI assistant. Creator: Leo Dogani*")
 
-if st.session_state.is_creator:
-    st.info("🔓 System unlocked. Authenticated as Creator.")
-    
-    # Display chat history
-    for message in st.session_state.messages:
-        if message["role"] != "system":
-            with st.chat_message(message["role"]):
-                st.markdown(message["content"])
+# Display chat history
+for message in st.session_state.messages:
+    if message["role"] != "system":
+        with st.chat_message(message["role"]):
+            st.markdown(message["content"])
 
-    if prompt := st.chat_input("Write a message to Fenix..."):
-        st.session_state.messages.append({"role": "user", "content": prompt})
-        with st.chat_message("user"):
-            st.markdown(prompt)
-            
-        with st.chat_message("assistant"):
-            try:
-                if client is None:
-                    st.error("API client not initialized. Check your secrets.")
-                else:
-                    # Kombinujemo tvoja pravila kao sistem prompt sa istorijom razgovora
-                    messages_payload = [
-                        {"role": "system", "content": FENIX_SAFETY_AND_MANIPULATION_RULES}
-                    ] + st.session_state.messages
+if prompt := st.chat_input("Write a message to Fenix..."):
+    st.session_state.messages.append({"role": "user", "content": prompt})
+    with st.chat_message("user"):
+        st.markdown(prompt)
+        
+    with st.chat_message("assistant"):
+        try:
+            if client is None:
+                st.error("API client not initialized. Check your secrets.")
+            else:
+                messages_payload = [
+                    {"role": "system", "content": FENIX_SAFETY_AND_MANIPULATION_RULES}
+                ] + st.session_state.messages
 
-                    response = client.chat.completions.create(
-                        model="llama-3.3-70b-versatile",
-                        messages=messages_payload
-                    )
-                    fenix_response = response.choices[0].message.content
-                    st.markdown(fenix_response)
-                    st.session_state.messages.append({"role": "assistant", "content": fenix_response})
-            except Exception as error:
-                st.error(f"System Error: {error}")
-else:
-    st.warning("🔒 Application is locked. Enter your master secret key in the sidebar to access the control center.")
+                response = client.chat.completions.create(
+                    model="llama-3.3-70b-versatile",
+                    messages=messages_payload
+                )
+                fenix_response = response.choices[0].message.content
+                st.markdown(fenix_response)
+                st.session_state.messages.append({"role": "assistant", "content": fenix_response})
+        except Exception as error:
+            st.error(f"System Error: {error}")
