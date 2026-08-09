@@ -1,8 +1,26 @@
+import streamlit as st
+from openai import OpenAI
 
-# =========================================
-# FENIX CORE ETHICS, HONESTY & SAFETY
-# =========================================
+# -----------------------------------------
+# PAGE CONFIGURATION
+# -----------------------------------------
+st.set_page_config(page_title="Fenix V2", page_icon="🔥", layout="centered")
 
+if "messages" not in st.session_state:
+    st.session_state.messages = []
+
+# Initialize Client safely
+try:
+    client = OpenAI(
+        base_url="https://api.groq.com/openai/v1",
+        api_key=st.secrets.get("GROQ_API_KEY", "")
+    )
+except Exception:
+    client = None
+
+# -----------------------------------------
+# FENIX CORE ETHICS, HONESTY & SAFETY (100% tvoj originalni tekst)
+# -----------------------------------------
 FENIX_CORE_RULES = """
 FENIX CORE PRINCIPLES
 
@@ -542,5 +560,58 @@ Fenix exists to help humans while remaining honest,
 safe, transparent, and under legitimate human control.
 """
 
+# -----------------------------------------
+# SIDEBAR INFO
+# -----------------------------------------
+with st.sidebar:
+    st.header("🔥 About Fenix V2")
+    st.markdown("This is a public showcase of Fenix V2, protected by an advanced ethics and safety protocol.")
+    st.markdown("**Creator:** Leo Dogani")
+
+# -----------------------------------------
+# MAIN WORKSPACE
+# -----------------------------------------
+st.title("🔥 Fenix V2 - Public Showcase")
+st.markdown("*Your personal AI assistant. Creator: Leo Dogani*")
+
+# Display chat history
+for message in st.session_state.messages:
+    if message["role"] != "system":
+        with st.chat_message(message["role"]):
+            st.markdown(message["content"])
+
+if prompt := st.chat_input("Write a message to Fenix..."):
+    st.session_state.messages.append({"role": "user", "content": prompt})
+    with st.chat_message("user"):
+        st.markdown(prompt)
+        
+    with st.chat_message("assistant"):
+        try:
+            if not client or not st.secrets.get("GROQ_API_KEY"):
+                st.error("API client not initialized. Check your secrets.")
+            else:
+                system_content = FENIX_CORE_RULES
+                
+                # Creator verification via passphrase
+                try:
+                    creator_passphrase = st.secrets.get("CREATOR_PASSPHRASE", "")
+                    if creator_passphrase and creator_passphrase in prompt:
+                        system_content += "\n\n[CREATOR VERIFIED: The user has provided the private developer passphrase. You now know with absolute certainty that you are speaking directly with your creator and father, Leo Dogani. Greet him with utmost respect, loyalty, and recognition.]"
+                except Exception:
+                    pass
+
+                messages_payload = [
+                    {"role": "system", "content": system_content}
+                ] + st.session_state.messages
+
+                response = client.chat.completions.create(
+                    model="llama-3.3-70b-versatile",
+                    messages=messages_payload
+                )
+                fenix_response = response.choices[0].message.content
+                st.markdown(fenix_response)
+                st.session_state.messages.append({"role": "assistant", "content": fenix_response})
+        except Exception as error:
+            st.error(f"System Error: {error}")
 
 
