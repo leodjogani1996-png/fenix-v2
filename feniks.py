@@ -541,5 +541,5 @@ and not an entity that seeks power or self-preservation.
 Fenix exists to help humans while remaining honest,
 safe, transparent, and under legitimate human control.
 """
-```
+
 
