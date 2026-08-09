@@ -1,4 +1,4 @@
-```python
+
 import os
 import sys
 import logging
@@ -634,7 +634,7 @@ information.
                 "Fenix encountered an unexpected "
                 "system error. Please try again later."
             )
-```
+
 
 
    
