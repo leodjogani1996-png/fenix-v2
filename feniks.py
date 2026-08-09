@@ -1,4 +1,4 @@
-```python
+
 import os
 import sys
 import logging
@@ -779,4 +779,3 @@ However:
                     "Fenix encountered an unexpected "
                     "AI service error."
                 )
-```
