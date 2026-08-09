@@ -1,78 +1,84 @@
-
-
 import json
 from pathlib import Path
+from typing import List
 
 
-# ---------------------------------------------------------
-# FENIX MEMORY MANAGER
-# ---------------------------------------------------------
-
-MEMORY_FILE = Path("data/memory.json")
+MEMORY_DIRECTORY = Path("memory/data")
+MEMORY_FILE = MEMORY_DIRECTORY / "memory.json"
 
 
-def _ensure_memory_file() -> None:
+def _ensure_storage() -> None:
     """
-    Make sure the memory directory and file exist.
+    Create the memory directory and file if necessary.
     """
 
-    MEMORY_FILE.parent.mkdir(parents=True, exist_ok=True)
+    MEMORY_DIRECTORY.mkdir(
+        parents=True,
+        exist_ok=True
+    )
 
     if not MEMORY_FILE.exists():
+
         MEMORY_FILE.write_text(
             "[]",
             encoding="utf-8"
         )
 
 
-def load_memory() -> list:
+def load_memory() -> List[str]:
     """
-    Load all saved memories from disk.
+    Load persistent Fenix memory.
     """
 
-    _ensure_memory_file()
+    _ensure_storage()
 
     try:
+
         content = MEMORY_FILE.read_text(
             encoding="utf-8"
         )
 
-        memory = json.loads(content)
+        data = json.loads(content)
 
-        if not isinstance(memory, list):
+        if not isinstance(data, list):
             return []
 
-        return memory
+        return [
+            str(item)
+            for item in data
+        ]
 
-    except (json.JSONDecodeError, OSError):
+    except (
+        OSError,
+        json.JSONDecodeError
+    ):
+
         return []
 
 
 def save_memory(memory: str) -> bool:
     """
-    Save a new memory.
-
-    Returns True if the memory was saved successfully.
+    Add one item to persistent memory.
     """
 
-    if not isinstance(memory, str):
-        return False
-
-    memory = memory.strip()
-
-    if not memory:
+    if not memory or not memory.strip():
         return False
 
     memories = load_memory()
 
-    memories.append(memory)
+    memories.append(
+        memory.strip()
+    )
 
     try:
+
+        _ensure_storage()
+
         MEMORY_FILE.write_text(
             json.dumps(
                 memories,
                 ensure_ascii=False,
-                indent=4
+                indent=2
             ),
             encoding="utf-8"
         )
@@ -80,45 +86,19 @@ def save_memory(memory: str) -> bool:
         return True
 
     except OSError:
-        return False
 
-
-def delete_memory(memory: str) -> bool:
-    """
-    Delete a specific memory.
-
-    Returns True if the memory was removed.
-    """
-
-    memories = load_memory()
-
-    if memory not in memories:
-        return False
-
-    memories.remove(memory)
-
-    try:
-        MEMORY_FILE.write_text(
-            json.dumps(
-                memories,
-                ensure_ascii=False,
-                indent=4
-            ),
-            encoding="utf-8"
-        )
-
-        return True
-
-    except OSError:
         return False
 
 
 def clear_memory() -> bool:
     """
-    Delete all saved memories.
+    Delete all persistent Fenix memory.
     """
 
     try:
+
+        _ensure_storage()
+
         MEMORY_FILE.write_text(
             "[]",
             encoding="utf-8"
@@ -127,4 +107,5 @@ def clear_memory() -> bool:
         return True
 
     except OSError:
+
         return False
