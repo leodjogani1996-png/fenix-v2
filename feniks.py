@@ -362,58 +362,228 @@ def build_system_context() -> str:
 
 
 # =========================================================
+# MULTILINGUAL EMOTION ALIASES
+# =========================================================
+
+EMOTION_ALIASES = {
+    "love": [
+        "love",
+        "ljubav",
+        "zaljubljenost",
+        "volim",
+        "voliš",
+        "voli",
+    ],
+    "anger": [
+        "anger",
+        "ljutnja",
+        "ljut",
+        "ljuta",
+    ],
+    "rage": [
+        "rage",
+        "bes",
+        "bijes",
+        "besan",
+        "besna",
+    ],
+    "fear": [
+        "fear",
+        "strah",
+        "plašim",
+        "bojim",
+        "uplašen",
+        "uplašena",
+    ],
+    "anxiety": [
+        "anxiety",
+        "anksioznost",
+        "anksiozan",
+        "anksiozna",
+    ],
+    "sadness": [
+        "sadness",
+        "tuga",
+        "tužan",
+        "tužna",
+    ],
+    "grief": [
+        "grief",
+        "tugovanje",
+        "žalost",
+    ],
+    "suffering": [
+        "suffering",
+        "patnja",
+        "patim",
+    ],
+    "disgust": [
+        "disgust",
+        "gađenje",
+        "gadi",
+    ],
+    "disappointment": [
+        "disappointment",
+        "razočaranje",
+        "razočaran",
+        "razočarana",
+    ],
+    "regret": [
+        "regret",
+        "kajanje",
+        "kajem",
+    ],
+    "frustration": [
+        "frustration",
+        "frustracija",
+        "frustriran",
+        "frustrirana",
+    ],
+    "guilt": [
+        "guilt",
+        "krivica",
+        "kriv",
+        "kriva",
+    ],
+    "shame": [
+        "shame",
+        "stid",
+        "sram",
+        "sramota",
+    ],
+    "embarrassment": [
+        "embarrassment",
+        "neprijatnost",
+        "neugoda",
+        "neugodno",
+    ],
+    "pride": [
+        "pride",
+        "ponos",
+        "ponosan",
+        "ponosna",
+    ],
+    "envy": [
+        "envy",
+        "zavist",
+        "zavidan",
+        "zavidna",
+    ],
+    "jealousy": [
+        "jealousy",
+        "ljubomora",
+        "ljubomoran",
+        "ljubomorna",
+    ],
+    "loneliness": [
+        "loneliness",
+        "usamljenost",
+        "usamljen",
+        "usamljena",
+    ],
+    "gratitude": [
+        "gratitude",
+        "zahvalnost",
+        "zahvalan",
+        "zahvalna",
+    ],
+    "boredom": [
+        "boredom",
+        "dosada",
+        "dosadno",
+    ],
+    "lust": [
+        "lust",
+        "požuda",
+        "pozuda",
+        "seksualna želja",
+        "seksualna zelja",
+    ],
+    "relief": [
+        "relief",
+        "olakšanje",
+        "olakšano",
+    ],
+    "joy": [
+        "joy",
+        "radost",
+        "sreća",
+        "sreca",
+    ],
+    "surprise": [
+        "surprise",
+        "iznenađenje",
+        "iznenadjenje",
+        "iznenađen",
+        "iznenadjen",
+    ],
+    "compassion": [
+        "compassion",
+        "saosećanje",
+        "saosecanje",
+        "suosjećanje",
+        "suosjecanje",
+    ],
+}
+
+
+# =========================================================
 # EMOTION CONTEXT ROUTER
 # =========================================================
 
 def detect_emotion_context(prompt: str) -> str:
     """
-    Detect whether the current user message directly references
-    a supported emotion and load only the relevant structured
-    knowledge from core/emotions.py.
+    Detect whether the current user message references a supported
+    emotion in English or Serbian/Bosnian/Croatian language variants.
 
-    This avoids sending the full emotion database on every request.
+    Only relevant emotion knowledge is loaded from core/emotions.py.
+    This keeps the model context efficient and avoids sending the
+    entire emotion database on every request.
     """
 
     if not prompt:
         return ""
 
     normalized_prompt = prompt.lower()
-
     detected_emotions = []
 
     try:
-        supported_emotions = list_emotions()
+        supported_emotions = set(list_emotions())
     except Exception as error:
         logger.exception(
             "Unable to list supported emotions: %s",
             error,
         )
-        supported_emotions = []
+        supported_emotions = set()
 
+    # Direct English database-name detection.
     for emotion_name in supported_emotions:
         pattern = rf"\b{re.escape(emotion_name.lower())}\b"
 
         if re.search(pattern, normalized_prompt):
             detected_emotions.append(emotion_name)
 
-    if re.search(r"\blove\b", normalized_prompt):
-        detected_emotions.append("love")
+    # Multilingual aliases.
+    for emotion_name, aliases in EMOTION_ALIASES.items():
+        if emotion_name not in supported_emotions and emotion_name != "love":
+            continue
+
+        for alias in aliases:
+            alias_pattern = rf"(?<!\w){re.escape(alias.lower())}(?!\w)"
+
+            if re.search(alias_pattern, normalized_prompt):
+                detected_emotions.append(emotion_name)
+                break
 
     if not detected_emotions:
         return ""
 
-    unique_emotions = list(
-        dict.fromkeys(detected_emotions)
-    )
-
+    unique_emotions = list(dict.fromkeys(detected_emotions))
     emotion_contexts = []
 
     for emotion_name in unique_emotions:
-
         try:
-            context = create_emotion_context(
-                emotion_name
-            )
+            context = create_emotion_context(emotion_name)
 
         except Exception as error:
             logger.exception(
@@ -424,9 +594,7 @@ def detect_emotion_context(prompt: str) -> str:
             continue
 
         if context:
-            emotion_contexts.append(
-                context.strip()
-            )
+            emotion_contexts.append(context.strip())
 
     if not emotion_contexts:
         return ""
