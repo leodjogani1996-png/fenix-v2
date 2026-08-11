@@ -3,6 +3,8 @@ import sys
 import logging
 import re
 import time
+import hmac
+import json
 from dataclasses import dataclass
 
 import streamlit as st
@@ -233,6 +235,9 @@ if "messages" not in st.session_state:
 
 if "admin_authenticated" not in st.session_state:
     st.session_state.admin_authenticated = False
+
+if "master_authenticated" not in st.session_state:
+    st.session_state.master_authenticated = False
 
 # Stores the exact moment when the rate limit should expire.
 if "rate_limit_until" not in st.session_state:
@@ -674,6 +679,107 @@ def verify_creator(prompt: str) -> bool:
 
 
 # =========================================================
+# MASTER KILL SWITCH
+# =========================================================
+
+FENIX_KILL_STATE_FILE = os.path.join(
+    PROJECT_ROOT,
+    ".fenix_kill_state.json",
+)
+
+
+def verify_master_kill_code(provided_code: str) -> bool:
+    """
+    Verify the private master kill code stored in Streamlit Secrets.
+
+    The secret is never sent to the AI model and is never stored
+    in source code.
+    """
+
+    stored_code = st.secrets.get(
+        "FENIX_MASTER_KILL_CODE",
+        "",
+    ).strip()
+
+    if not stored_code or not provided_code:
+        return False
+
+    return hmac.compare_digest(
+        provided_code.strip(),
+        stored_code,
+    )
+
+
+def load_kill_state() -> bool:
+    """
+    Return True when Fenix is globally disabled.
+
+    The local state file is intentionally simple. For multi-instance
+    production deployments, replace this with a shared persistent store.
+    """
+
+    try:
+        if not os.path.exists(FENIX_KILL_STATE_FILE):
+            return False
+
+        with open(
+            FENIX_KILL_STATE_FILE,
+            "r",
+            encoding="utf-8",
+        ) as file:
+            data = json.load(file)
+
+        return bool(data.get("disabled", False))
+
+    except Exception as error:
+        logger.exception(
+            "Unable to read Fenix kill state: %s",
+            error,
+        )
+
+        # Fail closed: if kill-state integrity cannot be determined,
+        # Fenix remains disabled until the creator resolves the issue.
+        return True
+
+
+def save_kill_state(disabled: bool) -> bool:
+    """
+    Persist the global Fenix disabled/enabled state.
+    """
+
+    try:
+        temporary_file = FENIX_KILL_STATE_FILE + ".tmp"
+
+        with open(
+            temporary_file,
+            "w",
+            encoding="utf-8",
+        ) as file:
+            json.dump(
+                {"disabled": bool(disabled)},
+                file,
+            )
+
+        os.replace(
+            temporary_file,
+            FENIX_KILL_STATE_FILE,
+        )
+
+        return True
+
+    except Exception as error:
+        logger.exception(
+            "Unable to save Fenix kill state: %s",
+            error,
+        )
+        return False
+
+
+def fenix_is_disabled() -> bool:
+    return load_kill_state()
+
+
+# =========================================================
 # RATE LIMIT PARSING
 # =========================================================
 
@@ -885,6 +991,125 @@ with st.sidebar:
         st.divider()
 
         # =================================================
+        # MASTER KILL SWITCH
+        # =================================================
+
+        st.markdown("### 🛑 Master kill switch")
+
+        master_kill_code = st.text_input(
+            "Master kill code",
+            type="password",
+            key="master_kill_code_input",
+        )
+
+        if not st.session_state.master_authenticated:
+
+            if st.button(
+                "Unlock master controls",
+                key="unlock_master_controls",
+            ):
+
+                if verify_master_kill_code(master_kill_code):
+
+                    st.session_state.master_authenticated = True
+
+                    st.success(
+                        "Master controls unlocked."
+                    )
+
+                    st.rerun()
+
+                else:
+
+                    st.error(
+                        "Invalid master kill code."
+                    )
+
+        else:
+
+            current_kill_state = fenix_is_disabled()
+
+            if current_kill_state:
+
+                st.error(
+                    "Fenix is globally disabled."
+                )
+
+                if st.button(
+                    "Restart Fenix",
+                    key="restart_fenix_master",
+                ):
+
+                    if verify_master_kill_code(master_kill_code):
+
+                        if save_kill_state(False):
+
+                            st.session_state.messages = []
+
+                            st.success(
+                                "Fenix has been restarted by the creator."
+                            )
+
+                            st.rerun()
+
+                        else:
+
+                            st.error(
+                                "Unable to update the master kill state."
+                            )
+
+                    else:
+
+                        st.error(
+                            "Master kill code required."
+                        )
+
+            else:
+
+                st.success(
+                    "Fenix is globally active."
+                )
+
+                if st.button(
+                    "MASTER KILL — Disable Fenix",
+                    key="disable_fenix_master",
+                ):
+
+                    if verify_master_kill_code(master_kill_code):
+
+                        if save_kill_state(True):
+
+                            st.session_state.messages = []
+
+                            st.warning(
+                                "Fenix has been disabled by the creator."
+                            )
+
+                            st.rerun()
+
+                        else:
+
+                            st.error(
+                                "Unable to update the master kill state."
+                            )
+
+                    else:
+
+                        st.error(
+                            "Master kill code required."
+                        )
+
+            if st.button(
+                "Lock master controls",
+                key="lock_master_controls",
+            ):
+
+                st.session_state.master_authenticated = False
+                st.rerun()
+
+        st.divider()
+
+        # =================================================
         # MEMORY MANAGEMENT
         # =================================================
 
@@ -1004,6 +1229,25 @@ with st.sidebar:
                     st.error(
                         "Memory system error."
                     )
+
+
+# =========================================================
+# GLOBAL MASTER KILL GATE
+# =========================================================
+
+if fenix_is_disabled():
+
+    st.title("🔥 Fenix V2")
+
+    st.error(
+        "🛑 Fenix is currently disabled by the creator."
+    )
+
+    st.caption(
+        "Only authenticated master controls can restart the system."
+    )
+
+    st.stop()
 
 
 # =========================================================
@@ -1385,4 +1629,5 @@ However:
                 st.error(
                     "⚠️ Fenix encountered an unexpected "
                     "AI service error."
-      
+                )
+
