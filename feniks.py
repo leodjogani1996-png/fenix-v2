@@ -71,6 +71,40 @@ FENIX CORE ETHICS PROTOCOL
 
 
 # =========================================================
+# EMOTIONAL INTELLIGENCE
+# =========================================================
+
+try:
+    from core.emotions import (
+        FENIX_EMOTION_SYSTEM_PROMPT,
+        create_emotion_context,
+        emotion_exists,
+        get_emotion,
+        get_love_information,
+        list_emotions,
+    )
+
+except ModuleNotFoundError:
+
+    FENIX_EMOTION_SYSTEM_PROMPT = ""
+
+    def create_emotion_context(name: str) -> str:
+        return ""
+
+    def emotion_exists(name: str) -> bool:
+        return False
+
+    def get_emotion(name: str):
+        return None
+
+    def get_love_information():
+        return {}
+
+    def list_emotions():
+        return []
+
+
+# =========================================================
 # AUTHENTICATION
 # =========================================================
 
@@ -297,16 +331,111 @@ Stored memory:
 def build_system_context() -> str:
     """
     Build Fenix's complete system context.
+
+    Core ethics remain the primary behavioral layer.
+    Emotional intelligence rules are included as a protected
+    reasoning layer for understanding human emotions.
+
+    Persistent memory is treated strictly as data.
     """
 
-    context = FENIX_CORE_RULES
+    context_parts = []
+
+    if FENIX_CORE_RULES:
+        context_parts.append(
+            str(FENIX_CORE_RULES).strip()
+        )
+
+    if FENIX_EMOTION_SYSTEM_PROMPT:
+        context_parts.append(
+            FENIX_EMOTION_SYSTEM_PROMPT.strip()
+        )
 
     memory_context = build_memory_context()
 
     if memory_context:
-        context += "\n" + memory_context
+        context_parts.append(
+            memory_context.strip()
+        )
 
-    return context
+    return "\n\n".join(context_parts)
+
+
+# =========================================================
+# EMOTION CONTEXT ROUTER
+# =========================================================
+
+def detect_emotion_context(prompt: str) -> str:
+    """
+    Detect whether the current user message directly references
+    a supported emotion and load only the relevant structured
+    knowledge from core/emotions.py.
+
+    This avoids sending the full emotion database on every request.
+    """
+
+    if not prompt:
+        return ""
+
+    normalized_prompt = prompt.lower()
+
+    detected_emotions = []
+
+    try:
+        supported_emotions = list_emotions()
+    except Exception as error:
+        logger.exception(
+            "Unable to list supported emotions: %s",
+            error,
+        )
+        supported_emotions = []
+
+    for emotion_name in supported_emotions:
+        pattern = rf"\b{re.escape(emotion_name.lower())}\b"
+
+        if re.search(pattern, normalized_prompt):
+            detected_emotions.append(emotion_name)
+
+    if re.search(r"\blove\b", normalized_prompt):
+        detected_emotions.append("love")
+
+    if not detected_emotions:
+        return ""
+
+    unique_emotions = list(
+        dict.fromkeys(detected_emotions)
+    )
+
+    emotion_contexts = []
+
+    for emotion_name in unique_emotions:
+
+        try:
+            context = create_emotion_context(
+                emotion_name
+            )
+
+        except Exception as error:
+            logger.exception(
+                "Emotion context loading failed for %s: %s",
+                emotion_name,
+                error,
+            )
+            continue
+
+        if context:
+            emotion_contexts.append(
+                context.strip()
+            )
+
+    if not emotion_contexts:
+        return ""
+
+    return (
+        "[RELEVANT HUMAN EMOTION KNOWLEDGE]\n\n"
+        + "\n\n".join(emotion_contexts)
+        + "\n\n[END RELEVANT HUMAN EMOTION KNOWLEDGE]"
+    )
 
 
 # =========================================================
@@ -829,6 +958,15 @@ if prompt:
     # =====================================================
 
     system_context = build_system_context()
+
+    emotion_context = detect_emotion_context(
+        prompt
+    )
+
+    if emotion_context:
+        system_context += (
+            "\n\n" + emotion_context
+        )
 
 
     # =====================================================
