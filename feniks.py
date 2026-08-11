@@ -105,6 +105,23 @@ except ModuleNotFoundError:
 
 
 # =========================================================
+# LANGUAGE QUALITY
+# =========================================================
+
+try:
+    from core.language import (
+        FENIX_LANGUAGE_SYSTEM_PROMPT,
+        sanitize_response_text,
+    )
+
+except ModuleNotFoundError:
+    FENIX_LANGUAGE_SYSTEM_PROMPT = ""
+
+    def sanitize_response_text(text: str) -> str:
+        return text
+
+
+# =========================================================
 # AUTHENTICATION
 # =========================================================
 
@@ -349,6 +366,11 @@ def build_system_context() -> str:
     if FENIX_EMOTION_SYSTEM_PROMPT:
         context_parts.append(
             FENIX_EMOTION_SYSTEM_PROMPT.strip()
+        )
+
+    if FENIX_LANGUAGE_SYSTEM_PROMPT:
+        context_parts.append(
+            FENIX_LANGUAGE_SYSTEM_PROMPT.strip()
         )
 
     memory_context = build_memory_context()
@@ -1204,6 +1226,15 @@ However:
                 .content
             )
 
+            # =================================================
+            # LANGUAGE QUALITY POST-PROCESSING
+            # =================================================
+
+            if fenix_response:
+                fenix_response = sanitize_response_text(
+                    fenix_response
+                )
+
 
             # =================================================
             # EMPTY RESPONSE PROTECTION
@@ -1354,4 +1385,4 @@ However:
                 st.error(
                     "⚠️ Fenix encountered an unexpected "
                     "AI service error."
-                )
+      
