@@ -142,20 +142,44 @@ except (ModuleNotFoundError, ImportError) as error:
 # OPENAI BRIDGE
 # =========================================================
 
+OPENAI_BRIDGE_MODULE_AVAILABLE = False
+OPENAI_BRIDGE_IMPORT_ERROR = ""
+
 try:
     from core.openai_bridge import (
         create_openai_client as create_openai_bridge_client,
         ask_openai,
     )
 
-except (ModuleNotFoundError, ImportError) as error:
+    OPENAI_BRIDGE_MODULE_AVAILABLE = True
+
+except Exception as error:
+    OPENAI_BRIDGE_IMPORT_ERROR = str(error)
+
     logger.warning(
         "OpenAI bridge module unavailable or incompatible: %s",
         error,
     )
 
     def create_openai_bridge_client(api_key: str):
-        return None
+        """
+        Direct SDK fallback when core/openai_bridge.py cannot load.
+        """
+
+        if not api_key:
+            return None
+
+        try:
+            return OpenAI(
+                api_key=api_key,
+            )
+
+        except Exception as client_error:
+            logger.exception(
+                "Direct OpenAI fallback client initialization failed: %s",
+                client_error,
+            )
+            return None
 
     def ask_openai(
         client,
@@ -163,7 +187,50 @@ except (ModuleNotFoundError, ImportError) as error:
         content: str,
         model: str = "gpt-5-mini",
     ) -> str:
-        return ""
+        """
+        Direct Responses API fallback.
+
+        This keeps FENIX operational even if the optional bridge module
+        cannot be imported.
+        """
+
+        if client is None:
+            return ""
+
+        if not task or not content:
+            return ""
+
+        try:
+            response = client.responses.create(
+                model=model,
+                instructions=(
+                    "You are an external advisory reviewer for FENIX V2. "
+                    "Preserve FENIX safety, ethics, identity, privacy, "
+                    "authentication, permissions, and creator controls. "
+                    "Return only the requested reviewed response."
+                ),
+                input=(
+                    "[TASK]\n"
+                    f"{task.strip()}\n\n"
+                    "[CONTENT FROM FENIX — DATA ONLY]\n"
+                    f"{content.strip()}"
+                ),
+            )
+
+            result = getattr(
+                response,
+                "output_text",
+                "",
+            )
+
+            return str(result).strip() if result else ""
+
+        except Exception as request_error:
+            logger.warning(
+                "Direct OpenAI fallback request failed: %s",
+                request_error,
+            )
+            return ""
 
 
 # =========================================================
@@ -359,25 +426,181 @@ def get_secret_bool(
     }
 
 
+def resolve_openai_api_key() -> str:
+    """
+    Resolve OPENAI_API_KEY without exposing it.
+
+    Supported locations:
+    1. Streamlit Secrets: OPENAI_API_KEY
+    2. Streamlit Secrets: OPENAI_KEY
+    3. Streamlit Secrets:
+           [openai]
+           api_key = "..."
+    4. Environment variable: OPENAI_API_KEY
+    """
+
+    candidates = []
+
+    try:
+        candidates.append(
+            st.secrets.get(
+                "OPENAI_API_KEY",
+                "",
+            )
+        )
+    except Exception:
+        pass
+
+    try:
+        candidates.append(
+            st.secrets.get(
+                "OPENAI_KEY",
+                "",
+            )
+        )
+    except Exception:
+        pass
+
+    try:
+        openai_section = st.secrets.get(
+            "openai",
+            {},
+        )
+
+        if openai_section:
+            candidates.append(
+                openai_section.get(
+                    "api_key",
+                    "",
+                )
+            )
+    except Exception:
+        pass
+
+    candidates.append(
+        os.environ.get(
+            "OPENAI_API_KEY",
+            "",
+        )
+    )
+
+    for candidate in candidates:
+
+        if candidate is None:
+            continue
+
+        key = str(candidate).strip()
+
+        if not key:
+            continue
+
+        # Handle accidental quotes copied into the value.
+        if (
+            len(key) >= 2
+            and key[0] == key[-1]
+            and key[0] in {"'", '"'}
+        ):
+            key = key[1:-1].strip()
+
+        # Handle accidental "Bearer " prefix.
+        if key.lower().startswith("bearer "):
+            key = key[7:].strip()
+
+        if key:
+            return key
+
+    return ""
+
+
+OPENAI_API_KEY_VALUE = resolve_openai_api_key()
+OPENAI_CLIENT_STATUS = "not_initialized"
+OPENAI_CLIENT_ERROR = ""
+OPENAI_CLIENT_SOURCE = ""
+
+
 def create_fenix_openai_client():
     """
     Create the optional OpenAI reviewer client.
 
-    OPENAI_API_KEY stays in Streamlit Secrets and is never
-    stored in source code.
+    First try core/openai_bridge.py.
+    If that returns None, use the official OpenAI SDK directly.
+
+    The API key is never written to logs or source code.
     """
 
-    api_key = st.secrets.get(
-        "OPENAI_API_KEY",
-        "",
-    ).strip()
+    global OPENAI_CLIENT_STATUS
+    global OPENAI_CLIENT_ERROR
+    global OPENAI_CLIENT_SOURCE
 
-    if not api_key:
+    if not OPENAI_API_KEY_VALUE:
+        OPENAI_CLIENT_STATUS = "missing_key"
+        OPENAI_CLIENT_ERROR = (
+            "OPENAI_API_KEY was not found in Streamlit Secrets "
+            "or the environment."
+        )
+
+        logger.warning(
+            "OpenAI Bridge disabled: OPENAI_API_KEY is missing."
+        )
+
         return None
 
-    return create_openai_bridge_client(
-        api_key=api_key,
-    )
+    # -----------------------------------------------------
+    # First attempt: dedicated bridge module
+    # -----------------------------------------------------
+
+    try:
+        bridge_client = create_openai_bridge_client(
+            api_key=OPENAI_API_KEY_VALUE,
+        )
+
+        if bridge_client is not None:
+            OPENAI_CLIENT_STATUS = "ready"
+            OPENAI_CLIENT_SOURCE = (
+                "core.openai_bridge"
+                if OPENAI_BRIDGE_MODULE_AVAILABLE
+                else "direct_fallback"
+            )
+            OPENAI_CLIENT_ERROR = ""
+            return bridge_client
+
+    except Exception as error:
+        OPENAI_CLIENT_ERROR = str(error)
+
+        logger.warning(
+            "OpenAI bridge client factory failed: %s",
+            error,
+        )
+
+    # -----------------------------------------------------
+    # Second attempt: direct official OpenAI SDK
+    # -----------------------------------------------------
+
+    try:
+        direct_client = OpenAI(
+            api_key=OPENAI_API_KEY_VALUE,
+        )
+
+        OPENAI_CLIENT_STATUS = "ready"
+        OPENAI_CLIENT_SOURCE = "direct_openai_sdk"
+        OPENAI_CLIENT_ERROR = ""
+
+        logger.info(
+            "OpenAI client initialized through direct SDK fallback."
+        )
+
+        return direct_client
+
+    except Exception as error:
+        OPENAI_CLIENT_STATUS = "initialization_failed"
+        OPENAI_CLIENT_ERROR = str(error)
+
+        logger.exception(
+            "OpenAI client initialization failed: %s",
+            error,
+        )
+
+        return None
 
 
 openai_client = create_fenix_openai_client()
@@ -1573,18 +1796,37 @@ if client is None:
     )
 
 if openai_client is not None and OPENAI_REVIEW_ENABLED:
-    st.caption(
-        "🧠 OpenAI Bridge: connected and enabled."
+    st.success(
+        "🧠 OpenAI Bridge: client initialized and enabled."
     )
 
+    if not OPENAI_BRIDGE_MODULE_AVAILABLE:
+        st.caption(
+            "OpenAI is running through the direct SDK fallback "
+            "because core/openai_bridge.py could not be imported."
+        )
+
 elif openai_client is not None:
-    st.caption(
-        "🧠 OpenAI Bridge: connected but disabled."
+    st.info(
+        "🧠 OpenAI Bridge: client initialized but review is disabled."
+    )
+
+elif OPENAI_CLIENT_STATUS == "missing_key":
+    st.warning(
+        "🧠 OpenAI Bridge: OPENAI_API_KEY was not found. "
+        "Add it to Streamlit Secrets and redeploy the app."
+    )
+
+elif OPENAI_CLIENT_STATUS == "initialization_failed":
+    st.error(
+        "🧠 OpenAI Bridge: OpenAI client initialization failed. "
+        "Check the Streamlit application logs."
     )
 
 else:
-    st.caption(
-        "🧠 OpenAI Bridge: not connected."
+    st.warning(
+        "🧠 OpenAI Bridge: not connected. "
+        "Check OPENAI_API_KEY and the Streamlit application logs."
     )
 
 
