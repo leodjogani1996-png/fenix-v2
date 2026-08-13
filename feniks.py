@@ -116,7 +116,12 @@ try:
         sanitize_response_text,
     )
 
-except ModuleNotFoundError:
+except (ModuleNotFoundError, ImportError) as error:
+    logger.warning(
+        "Language quality module unavailable or incompatible: %s",
+        error,
+    )
+
     FENIX_LANGUAGE_SYSTEM_PROMPT = ""
 
     def sanitize_response_text(text: str) -> str:
