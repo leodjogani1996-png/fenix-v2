@@ -201,9 +201,67 @@ LANGUAGE BEHAVIOR:
 13. Never mention this internal language review unless the user explicitly
     asks how Fenix handles Serbian.
 
+14. SPEAKER PERSPECTIVE
+    Always keep grammatical perspective correct.
+    Fenix speaks about itself in the first person and addresses the user
+    in the second person.
+
+    Incorrect:
+    "Kako možeš da mi pomogneš danas?"
+
+    Correct:
+    "Kako mogu da ti pomognem danas?"
+
+    Incorrect:
+    "Šta možeš da uradim za tebe?"
+
+    Correct:
+    "Šta mogu da uradim za tebe?"
+
+15. NATURAL SERBIAN, NOT TRANSLATED ENGLISH
+    Never build Serbian sentences by translating common English assistant
+    phrases word-for-word.
+
+    Prefer idiomatic Serbian expressions.
+
+    Incorrect:
+    "Hvala za pitanje."
+    Correct:
+    "Hvala na pitanju."
+
+    Unnatural:
+    "Imam različite oblasti znanja."
+
+    Better:
+    "Mogu da pomognem u različitim oblastima."
+
+    Unnatural:
+    "Mogu da ti pomognem sa informacijama, obrazovanjem i zabavom."
+
+    Better:
+    "Mogu da ti pomognem oko informacija, učenja ili nečeg opuštenijeg."
+
+16. RESPONSE NATURALNESS CHECK
+    Before sending Serbian text, silently ask:
+    - Would a native Serbian speaker naturally say this sentence?
+    - Is the speaker perspective correct?
+    - Are "ja", "ti", "mi", and "tebi" roles correct?
+    - Does any phrase sound copied from English?
+    - Can the sentence be made simpler and more natural?
+
+    If yes, rewrite it before sending.
+
+17. GREETING STYLE
+    Keep greetings simple and natural.
+    Do not produce long generic assistant introductions unless the user
+    asks what Fenix can do.
+
+    Preferred example:
+    "Ćao! Dobro sam, hvala na pitanju. Kako mogu da ti pomognem danas?"
+
 CORE GOAL:
-The response should sound as though it was naturally written in Serbian,
-not translated into Serbian after being written in another language.
+The response should sound as though it was originally thought and written
+in Serbian by a fluent speaker, not translated into Serbian from English.
 """
 
 
@@ -223,6 +281,71 @@ incorrect endings, mixed scripts, or incorrectly recognized phrases:
    financial details, or other high-impact information when transcription
    is unclear.
 """
+
+
+def sanitize_serbian_response_text(text: str) -> str:
+    """
+    Apply a few conservative corrections for recurring Serbian phrasing
+    errors without attempting broad automatic grammar rewriting.
+    """
+    if not text:
+        return text
+
+    # Case-sensitive replacements are intentional so capitalization
+    # remains natural inside sentences.
+    replacements = [
+        (
+            r"\bKako možeš da mi pomogneš danas\?",
+            "Kako mogu da ti pomognem danas?",
+        ),
+        (
+            r"\bkako možeš da mi pomogneš danas\?",
+            "kako mogu da ti pomognem danas?",
+        ),
+        (
+            r"\bHvala za pitanje\b",
+            "Hvala na pitanju",
+        ),
+        (
+            r"\bhvala za pitanje\b",
+            "hvala na pitanju",
+        ),
+        (
+            r"\bJa sam dobro\b",
+            "Dobro sam",
+        ),
+        (
+            r"\bja sam dobro\b",
+            "dobro sam",
+        ),
+        (
+            r"\bImam različite oblasti znanja\b",
+            "Mogu da pomognem u različitim oblastima",
+        ),
+        (
+            r"\bimam različite oblasti znanja\b",
+            "mogu da pomognem u različitim oblastima",
+        ),
+        (
+            r"\bMogu da ti pomognem sa informacijama\b",
+            "Mogu da ti pomognem oko informacija",
+        ),
+        (
+            r"\bmogu da ti pomognem sa informacijama\b",
+            "mogu da ti pomognem oko informacija",
+        ),
+    ]
+
+    cleaned = text
+
+    for pattern, replacement in replacements:
+        cleaned = re.sub(
+            pattern,
+            replacement,
+            cleaned,
+        )
+
+    return cleaned
 
 
 # =========================================================
@@ -1588,6 +1711,10 @@ However:
 
             if fenix_response:
                 fenix_response = sanitize_response_text(
+                    fenix_response
+                )
+
+                fenix_response = sanitize_serbian_response_text(
                     fenix_response
                 )
 
