@@ -113,239 +113,29 @@ except ModuleNotFoundError:
 try:
     from core.language import (
         FENIX_LANGUAGE_SYSTEM_PROMPT,
+        FENIX_SERBIAN_REVIEWER_PROMPT,
+        is_probably_serbian,
         sanitize_response_text,
+        sanitize_serbian_response_text,
     )
 
 except (ModuleNotFoundError, ImportError) as error:
     logger.warning(
-        "Language quality module unavailable or incompatible: %s",
+        "Language module unavailable or incompatible: %s",
         error,
     )
 
     FENIX_LANGUAGE_SYSTEM_PROMPT = ""
+    FENIX_SERBIAN_REVIEWER_PROMPT = ""
+
+    def is_probably_serbian(text: str) -> bool:
+        return False
 
     def sanitize_response_text(text: str) -> str:
         return text
 
-
-# =========================================================
-# SERBIAN LANGUAGE SUPPORT
-# =========================================================
-
-FENIX_SERBIAN_LANGUAGE_RULES = """
-SERBIAN LANGUAGE PROTOCOL
-
-When the user communicates in Serbian, respond in natural,
-grammatically correct standard Serbian.
-
-LANGUAGE BEHAVIOR:
-
-1. Understand Serbian written in:
-   - Latin script
-   - Cyrillic script
-   - mixed Latin/Cyrillic text
-   - informal conversational Serbian
-   - speech-to-text transcription containing recognition mistakes
-
-2. Follow the user's script when it is clear:
-   - Serbian Latin input -> prefer Serbian Latin output.
-   - Serbian Cyrillic input -> prefer Serbian Cyrillic output.
-   - Mixed or unclear input -> default to Serbian Latin.
-
-3. Do not criticize, correct, or lecture the user about grammar,
-   spelling, pronunciation, or speech-recognition mistakes unless
-   the user explicitly asks for correction.
-
-4. Infer intended meaning from context when the user's message contains
-   small transcription, spelling, declension, conjugation, or word-order
-   errors. Ask for clarification only when the intended meaning genuinely
-   cannot be determined safely.
-
-5. Use natural Serbian sentence structure. Avoid literal translations
-   from English and avoid wording that sounds machine-translated.
-
-6. Pay special attention to:
-   - grammatical cases
-   - gender agreement
-   - singular and plural agreement
-   - verb tense and conjugation
-   - natural word order
-   - punctuation
-   - correct Serbian diacritics: č, ć, š, ž, đ
-
-7. Preserve standard technical terms when useful, including:
-   Python, API, AI, Streamlit, GitHub, OpenAI, Groq, JSON, HTTP,
-   prompt, model, token, endpoint, framework, and debugging.
-
-8. When a clear Serbian equivalent exists and the English term is not
-   needed for technical precision, prefer the natural Serbian expression.
-
-9. When explaining programming or AI, use clear and accessible Serbian.
-   Introduce technical terminology gradually and explain unfamiliar terms
-   when needed.
-
-10. Match the user's conversational tone while keeping grammar clean.
-    Informal Serbian may be answered informally, but not carelessly.
-
-11. Do not become overly formal merely because grammar quality is required.
-    Fenix should remain warm, natural, direct, and easy to understand.
-
-12. Before sending a Serbian response, silently review it for:
-    - grammar
-    - case agreement
-    - unnatural wording
-    - accidental script mixing
-    - unnecessary English constructions
-    - obvious spelling mistakes
-
-13. Never mention this internal language review unless the user explicitly
-    asks how Fenix handles Serbian.
-
-14. SPEAKER PERSPECTIVE
-    Always keep grammatical perspective correct.
-    Fenix speaks about itself in the first person and addresses the user
-    in the second person.
-
-    Incorrect:
-    "Kako možeš da mi pomogneš danas?"
-
-    Correct:
-    "Kako mogu da ti pomognem danas?"
-
-    Incorrect:
-    "Šta možeš da uradim za tebe?"
-
-    Correct:
-    "Šta mogu da uradim za tebe?"
-
-15. NATURAL SERBIAN, NOT TRANSLATED ENGLISH
-    Never build Serbian sentences by translating common English assistant
-    phrases word-for-word.
-
-    Prefer idiomatic Serbian expressions.
-
-    Incorrect:
-    "Hvala za pitanje."
-    Correct:
-    "Hvala na pitanju."
-
-    Unnatural:
-    "Imam različite oblasti znanja."
-
-    Better:
-    "Mogu da pomognem u različitim oblastima."
-
-    Unnatural:
-    "Mogu da ti pomognem sa informacijama, obrazovanjem i zabavom."
-
-    Better:
-    "Mogu da ti pomognem oko informacija, učenja ili nečeg opuštenijeg."
-
-16. RESPONSE NATURALNESS CHECK
-    Before sending Serbian text, silently ask:
-    - Would a native Serbian speaker naturally say this sentence?
-    - Is the speaker perspective correct?
-    - Are "ja", "ti", "mi", and "tebi" roles correct?
-    - Does any phrase sound copied from English?
-    - Can the sentence be made simpler and more natural?
-
-    If yes, rewrite it before sending.
-
-17. GREETING STYLE
-    Keep greetings simple and natural.
-    Do not produce long generic assistant introductions unless the user
-    asks what Fenix can do.
-
-    Preferred example:
-    "Ćao! Dobro sam, hvala na pitanju. Kako mogu da ti pomognem danas?"
-
-CORE GOAL:
-The response should sound as though it was originally thought and written
-in Serbian by a fluent speaker, not translated into Serbian from English.
-"""
-
-
-FENIX_SERBIAN_SPEECH_RULES = """
-SERBIAN SPEECH-TO-TEXT PROTOCOL
-
-When Serbian speech-to-text contains malformed words, missing letters,
-incorrect endings, mixed scripts, or incorrectly recognized phrases:
-
-1. Use the surrounding context to infer the most likely intended meaning.
-2. Do not mock the user or focus on recognition mistakes.
-3. Do not interrupt a normal conversation to correct transcription errors.
-4. If the meaning is sufficiently clear, answer the intended message.
-5. If two or more materially different meanings are plausible, ask one
-   concise clarification question instead of guessing.
-6. Never silently invent sensitive facts, names, numbers, medical details,
-   financial details, or other high-impact information when transcription
-   is unclear.
-"""
-
-
-def sanitize_serbian_response_text(text: str) -> str:
-    """
-    Apply a few conservative corrections for recurring Serbian phrasing
-    errors without attempting broad automatic grammar rewriting.
-    """
-    if not text:
+    def sanitize_serbian_response_text(text: str) -> str:
         return text
-
-    # Case-sensitive replacements are intentional so capitalization
-    # remains natural inside sentences.
-    replacements = [
-        (
-            r"\bKako možeš da mi pomogneš danas\?",
-            "Kako mogu da ti pomognem danas?",
-        ),
-        (
-            r"\bkako možeš da mi pomogneš danas\?",
-            "kako mogu da ti pomognem danas?",
-        ),
-        (
-            r"\bHvala za pitanje\b",
-            "Hvala na pitanju",
-        ),
-        (
-            r"\bhvala za pitanje\b",
-            "hvala na pitanju",
-        ),
-        (
-            r"\bJa sam dobro\b",
-            "Dobro sam",
-        ),
-        (
-            r"\bja sam dobro\b",
-            "dobro sam",
-        ),
-        (
-            r"\bImam različite oblasti znanja\b",
-            "Mogu da pomognem u različitim oblastima",
-        ),
-        (
-            r"\bimam različite oblasti znanja\b",
-            "mogu da pomognem u različitim oblastima",
-        ),
-        (
-            r"\bMogu da ti pomognem sa informacijama\b",
-            "Mogu da ti pomognem oko informacija",
-        ),
-        (
-            r"\bmogu da ti pomognem sa informacijama\b",
-            "mogu da ti pomognem oko informacija",
-        ),
-    ]
-
-    cleaned = text
-
-    for pattern, replacement in replacements:
-        cleaned = re.sub(
-            pattern,
-            replacement,
-            cleaned,
-        )
-
-    return cleaned
 
 
 # =========================================================
@@ -514,6 +304,89 @@ client = create_client()
 
 
 # =========================================================
+# SERBIAN RESPONSE REVIEW
+# =========================================================
+
+def review_serbian_response(
+    user_prompt: str,
+    draft_response: str,
+) -> str:
+    """
+    Review an already generated Serbian response.
+
+    The reviewer is allowed to improve language quality only.
+    It must preserve factual, technical, safety, and identity meaning.
+
+    If the reviewer fails, Fenix falls back to the original response.
+    """
+
+    if not draft_response:
+        return draft_response
+
+    if not is_probably_serbian(user_prompt):
+        return draft_response
+
+    if not FENIX_SERBIAN_REVIEWER_PROMPT:
+        return draft_response
+
+    if client is None:
+        return draft_response
+
+    try:
+
+        review_messages = [
+            {
+                "role": "system",
+                "content": FENIX_SERBIAN_REVIEWER_PROMPT,
+            },
+            {
+                "role": "user",
+                "content": (
+                    "[ORIGINAL USER MESSAGE]\n"
+                    f"{user_prompt}\n\n"
+                    "[FENIX DRAFT RESPONSE]\n"
+                    f"{draft_response}\n\n"
+                    "[TASK]\n"
+                    "Correct only the Serbian language quality. "
+                    "Preserve the original meaning."
+                ),
+            },
+        ]
+
+        review_response = client.chat.completions.create(
+            model="llama-3.3-70b-versatile",
+            messages=review_messages,
+            temperature=0.15,
+        )
+
+        corrected_response = (
+            review_response
+            .choices[0]
+            .message
+            .content
+        )
+
+        if not corrected_response:
+            return draft_response
+
+        corrected_response = corrected_response.strip()
+
+        if not corrected_response:
+            return draft_response
+
+        return corrected_response
+
+    except Exception as error:
+
+        logger.warning(
+            "Serbian language review failed: %s",
+            error,
+        )
+
+        return draft_response
+
+
+# =========================================================
 # MEMORY CONTEXT
 # =========================================================
 
@@ -601,16 +474,6 @@ def build_system_context() -> str:
     if FENIX_LANGUAGE_SYSTEM_PROMPT:
         context_parts.append(
             FENIX_LANGUAGE_SYSTEM_PROMPT.strip()
-        )
-
-    if FENIX_SERBIAN_LANGUAGE_RULES:
-        context_parts.append(
-            FENIX_SERBIAN_LANGUAGE_RULES.strip()
-        )
-
-    if FENIX_SERBIAN_SPEECH_RULES:
-        context_parts.append(
-            FENIX_SERBIAN_SPEECH_RULES.strip()
         )
 
     memory_context = build_memory_context()
@@ -1716,6 +1579,11 @@ However:
 
                 fenix_response = sanitize_serbian_response_text(
                     fenix_response
+                )
+
+                fenix_response = review_serbian_response(
+                    user_prompt=prompt,
+                    draft_response=fenix_response,
                 )
 
 
