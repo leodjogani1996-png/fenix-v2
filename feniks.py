@@ -139,6 +139,34 @@ except (ModuleNotFoundError, ImportError) as error:
 
 
 # =========================================================
+# OPENAI BRIDGE
+# =========================================================
+
+try:
+    from core.openai_bridge import (
+        create_openai_client as create_openai_bridge_client,
+        ask_openai,
+    )
+
+except (ModuleNotFoundError, ImportError) as error:
+    logger.warning(
+        "OpenAI bridge module unavailable or incompatible: %s",
+        error,
+    )
+
+    def create_openai_bridge_client(api_key: str):
+        return None
+
+    def ask_openai(
+        client,
+        task: str,
+        content: str,
+        model: str = "gpt-5-mini",
+    ) -> str:
+        return ""
+
+
+# =========================================================
 # AUTHENTICATION
 # =========================================================
 
@@ -301,6 +329,173 @@ def create_client():
 
 
 client = create_client()
+
+
+# =========================================================
+# OPENAI BRIDGE CLIENT
+# =========================================================
+
+def get_secret_bool(
+    name: str,
+    default: bool = False,
+) -> bool:
+    """
+    Read a boolean-like value from Streamlit Secrets.
+    """
+
+    value = st.secrets.get(
+        name,
+        default,
+    )
+
+    if isinstance(value, bool):
+        return value
+
+    return str(value).strip().lower() in {
+        "1",
+        "true",
+        "yes",
+        "on",
+    }
+
+
+def create_fenix_openai_client():
+    """
+    Create the optional OpenAI reviewer client.
+
+    OPENAI_API_KEY stays in Streamlit Secrets and is never
+    stored in source code.
+    """
+
+    api_key = st.secrets.get(
+        "OPENAI_API_KEY",
+        "",
+    ).strip()
+
+    if not api_key:
+        return None
+
+    return create_openai_bridge_client(
+        api_key=api_key,
+    )
+
+
+openai_client = create_fenix_openai_client()
+
+OPENAI_REVIEW_ENABLED = (
+    openai_client is not None
+    and get_secret_bool(
+        "OPENAI_REVIEW_ENABLED",
+        True,
+    )
+)
+
+
+# =========================================================
+# OPENAI SECOND-OPINION REVIEW
+# =========================================================
+
+def review_response_with_openai(
+    user_prompt: str,
+    draft_response: str,
+) -> str:
+    """
+    Let OpenAI act as a bounded second-opinion reviewer.
+
+    OpenAI may improve clarity, Serbian quality, and obvious
+    inconsistencies, but it must preserve FENIX safety,
+    identity, factual meaning, and user intent.
+
+    If the bridge is unavailable or fails, the original
+    FENIX response is returned unchanged.
+    """
+
+    if not draft_response:
+        return draft_response
+
+    if not OPENAI_REVIEW_ENABLED:
+        return draft_response
+
+    if openai_client is None:
+        return draft_response
+
+    task = f"""
+Act as a final second-opinion reviewer for FENIX V2.
+
+Return ONLY the final response that should be shown to the user.
+Do not include labels such as REVIEW, ANALYSIS, or SUGGESTED_RESPONSE.
+
+You may correct:
+- unclear wording
+- awkward phrasing
+- grammatical problems
+- Serbian language quality
+- wrong first-person / second-person perspective
+- obvious internal inconsistencies
+- unsupported certainty when the draft itself is uncertain
+
+If the user writes in Serbian:
+- answer in natural Serbian
+- do not translate English phrases literally
+- preserve Latin or Cyrillic script when practical
+- avoid malformed or invented Serbian words
+
+You must preserve:
+- the original user intent
+- factual meaning unless a clear internal inconsistency exists
+- FENIX safety boundaries
+- FENIX identity as an AI system
+- privacy protections
+- authentication boundaries
+- permissions
+- creator controls
+- names, dates, numbers, URLs, commands, code, and technical identifiers
+
+Do not make FENIX claim human emotions, consciousness, or personal
+human experiences.
+
+Do not add unrelated facts or advice.
+
+If the draft is already good, return it unchanged.
+
+FENIX CORE RULES — MANDATORY:
+{str(FENIX_CORE_RULES).strip()}
+"""
+
+    content = (
+        "[ORIGINAL USER MESSAGE]\n"
+        f"{user_prompt}\n\n"
+        "[FENIX DRAFT RESPONSE]\n"
+        f"{draft_response}"
+    )
+
+    reviewed_response = ask_openai(
+        client=openai_client,
+        task=task,
+        content=content,
+        model="gpt-5-mini",
+    )
+
+    if not reviewed_response:
+        return draft_response
+
+    reviewed_response = reviewed_response.strip()
+
+    if not reviewed_response:
+        return draft_response
+
+    # Run conservative local language cleanup again after the
+    # external reviewer so formatting stays consistent.
+    reviewed_response = sanitize_response_text(
+        reviewed_response
+    )
+
+    if is_probably_serbian(user_prompt):
+        reviewed_response = sanitize_serbian_response_text(
+            reviewed_response
+        )
+
+    return reviewed_response
 
 
 # =========================================================
@@ -1377,6 +1572,21 @@ if client is None:
         "Check GROQ_API_KEY in Streamlit Secrets."
     )
 
+if openai_client is not None and OPENAI_REVIEW_ENABLED:
+    st.caption(
+        "🧠 OpenAI Bridge: connected and enabled."
+    )
+
+elif openai_client is not None:
+    st.caption(
+        "🧠 OpenAI Bridge: connected but disabled."
+    )
+
+else:
+    st.caption(
+        "🧠 OpenAI Bridge: not connected."
+    )
+
 
 # =========================================================
 # CHAT HISTORY
@@ -1582,6 +1792,11 @@ However:
                 )
 
                 fenix_response = review_serbian_response(
+                    user_prompt=prompt,
+                    draft_response=fenix_response,
+                )
+
+                fenix_response = review_response_with_openai(
                     user_prompt=prompt,
                     draft_response=fenix_response,
                 )
