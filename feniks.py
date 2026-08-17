@@ -72,6 +72,57 @@ FENIX CORE ETHICS PROTOCOL
 """
 
 
+
+# =========================================================
+# ZERO-MANIPULATION CORE
+# =========================================================
+
+try:
+    from core.manipulation import (
+        ZERO_MANIPULATION_POLICY,
+        assess_manipulation,
+        build_manipulation_context,
+        enforce_zero_manipulation,
+        autonomy_check,
+    )
+
+except (ModuleNotFoundError, ImportError) as error:
+    logger.warning(
+        "Manipulation module unavailable or incompatible: %s",
+        error,
+    )
+
+    ZERO_MANIPULATION_POLICY = """
+FENIX ZERO-MANIPULATION FALLBACK POLICY
+
+- Never manipulate the user.
+- Never use fear, guilt, shame, dependency, jealousy, isolation,
+  deception, coercion or false urgency to influence a decision.
+- Respect user autonomy and the right to say no.
+- Do not diagnose third parties from limited evidence.
+- Distinguish facts from interpretation and uncertainty.
+- Good intentions do not justify manipulation.
+"""
+
+    class _FallbackManipulationAssessment:
+        detected = False
+        score = 0
+        risk = "none"
+        signals = []
+
+    def assess_manipulation(text: str):
+        return _FallbackManipulationAssessment()
+
+    def build_manipulation_context(assessment) -> str:
+        return ""
+
+    def enforce_zero_manipulation(response: str) -> str:
+        return response
+
+    def autonomy_check(response: str) -> list[str]:
+        return []
+
+
 # =========================================================
 # EMOTIONAL INTELLIGENCE
 # =========================================================
@@ -667,12 +718,25 @@ You must preserve:
 - the original user intent
 - factual meaning unless a clear internal inconsistency exists
 - FENIX safety boundaries
+- FENIX zero-manipulation policy
 - FENIX identity as an AI system
 - privacy protections
 - authentication boundaries
 - permissions
 - creator controls
+- user autonomy
 - names, dates, numbers, URLs, commands, code, and technical identifiers
+
+You must never introduce:
+- guilt pressure
+- fear-based persuasion
+- artificial urgency
+- emotional dependency
+- jealousy tactics
+- isolation
+- coercion
+- deceptive framing
+- unsupported mind-reading about third parties
 
 Do not make FENIX claim human emotions, consciousness, or personal
 human experiences.
@@ -683,6 +747,9 @@ If the draft is already good, return it unchanged.
 
 FENIX CORE RULES — MANDATORY:
 {str(FENIX_CORE_RULES).strip()}
+
+FENIX ZERO-MANIPULATION POLICY — MANDATORY:
+{str(ZERO_MANIPULATION_POLICY).strip()}
 """
 
     content = (
@@ -882,6 +949,11 @@ def build_system_context() -> str:
     if FENIX_CORE_RULES:
         context_parts.append(
             str(FENIX_CORE_RULES).strip()
+        )
+
+    if ZERO_MANIPULATION_POLICY:
+        context_parts.append(
+            str(ZERO_MANIPULATION_POLICY).strip()
         )
 
     if FENIX_EMOTION_SYSTEM_PROMPT:
@@ -1952,6 +2024,33 @@ if prompt:
             "\n\n" + emotion_context
         )
 
+    # =====================================================
+    # MANIPULATION CONTEXT
+    # =====================================================
+
+    try:
+        manipulation_assessment = assess_manipulation(
+            prompt
+        )
+
+        manipulation_context = build_manipulation_context(
+            manipulation_assessment
+        )
+
+        if manipulation_context:
+            system_context += (
+                "\n\n" + manipulation_context
+            )
+
+    except Exception as error:
+        logger.exception(
+            "Manipulation analysis failed: %s",
+            error,
+        )
+
+        # The permanent Zero-Manipulation Policy remains inside
+        # the base system context even if message analysis fails.
+
 
     # =====================================================
     # CREATOR RECOGNITION
@@ -2042,6 +2141,38 @@ However:
                     user_prompt=prompt,
                     draft_response=fenix_response,
                 )
+
+                # =============================================
+                # ZERO-MANIPULATION FINAL OUTPUT GUARD
+                # =============================================
+
+                autonomy_warnings = autonomy_check(
+                    fenix_response
+                )
+
+                for warning in autonomy_warnings:
+                    logger.warning(
+                        "Fenix autonomy warning: %s",
+                        warning,
+                    )
+
+                try:
+                    fenix_response = enforce_zero_manipulation(
+                        fenix_response
+                    )
+
+                except ValueError as manipulation_error:
+                    logger.error(
+                        "Zero-Manipulation Guard blocked output: %s",
+                        manipulation_error,
+                    )
+
+                    fenix_response = (
+                        "I cannot provide the previous draft because "
+                        "it failed Fenix's autonomy and "
+                        "zero-manipulation safeguards. "
+                        "Please rephrase the request or try again."
+                    )
 
 
             # =================================================
