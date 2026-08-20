@@ -1,7 +1,9 @@
 """
 FENIX V2 Core Package
 
-Contains FENIX core modules for:
+This package contains the protected core modules used by FENIX V2.
+
+Modules include:
 - safety
 - ethics
 - authentication
@@ -10,6 +12,10 @@ Contains FENIX core modules for:
 - emotions
 - manipulation protection
 - OpenAI advisory bridge
+
+Core modules are separated from the main application so FENIX
+can keep its safety, ethics, identity, security, and support
+systems modular and easier to maintain.
 """
 
 __all__ = []
