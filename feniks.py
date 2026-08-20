@@ -404,7 +404,7 @@ def review_serbian_response(
         ]
 
         review_response = client.chat.completions.create(
-            model="llama-3.3-70b-versatile",
+            model="qwen/qwen3.6-27b",
             messages=review_messages,
             temperature=0.15,
         )
@@ -1639,7 +1639,7 @@ However:
         try:
 
             response = client.chat.completions.create(
-                model="llama-3.3-70b-versatile",
+                model="qwen/qwen3.6-27b",
                 messages=messages_payload,
             )
 
