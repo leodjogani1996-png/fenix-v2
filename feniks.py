@@ -353,6 +353,26 @@ def create_client():
 client = create_client()
 
 
+def strip_hidden_reasoning(text: str) -> str:
+    """
+    Remove an accidentally exposed Qwen reasoning block from user-visible text.
+
+    This is a defensive fallback. Groq is also instructed at request time
+    to hide and disable reasoning.
+    """
+    if not text:
+        return text
+
+    cleaned = str(text)
+
+    # Handle normal and escaped closing think tags.
+    for closing_tag in ("</think>", r"\</think>"):
+        if closing_tag in cleaned:
+            cleaned = cleaned.rsplit(closing_tag, 1)[-1]
+
+    return cleaned.strip()
+
+
 # =========================================================
 # SERBIAN RESPONSE REVIEW
 # =========================================================
@@ -405,6 +425,10 @@ def review_serbian_response(
 
         review_response = client.chat.completions.create(
             model="qwen/qwen3.6-27b",
+            extra_body={
+                "reasoning_format": "hidden",
+                "reasoning_effort": "none",
+            },
             messages=review_messages,
             temperature=0.15,
         )
@@ -419,7 +443,9 @@ def review_serbian_response(
         if not corrected_response:
             return draft_response
 
-        corrected_response = corrected_response.strip()
+        corrected_response = strip_hidden_reasoning(
+            corrected_response
+        )
 
         if not corrected_response:
             return draft_response
@@ -1640,6 +1666,10 @@ However:
 
             response = client.chat.completions.create(
                 model="qwen/qwen3.6-27b",
+                extra_body={
+                    "reasoning_format": "hidden",
+                    "reasoning_effort": "none",
+                },
                 messages=messages_payload,
             )
 
@@ -1655,6 +1685,10 @@ However:
             # =================================================
 
             if fenix_response:
+                fenix_response = strip_hidden_reasoning(
+                    fenix_response
+                )
+
                 fenix_response = sanitize_response_text(
                     fenix_response
                 )
